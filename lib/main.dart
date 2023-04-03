@@ -6,12 +6,14 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:universal_html/html.dart' as html;
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_background_service_android/flutter_background_service_android.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
+import 'package:web_socket_channel/web_socket_channel.dart';
 
 int id = 0;
 
@@ -81,8 +83,8 @@ void notificationTapBackground(NotificationResponse notificationResponse) {
 Future<void> main() async {
   // needed if you intend to initialize in the `main` function
   WidgetsFlutterBinding.ensureInitialized();
+
   await initializeService();
-  await _configureLocalTimeZone();
 
   final NotificationAppLaunchDetails? notificationAppLaunchDetails = !kIsWeb &&
           Platform.isLinux
@@ -95,57 +97,6 @@ Future<void> main() async {
     initialRoute = SecondPage.routeName;
   }
 
-  const AndroidInitializationSettings initializationSettingsAndroid =
-      AndroidInitializationSettings('app_icon');
-
-  final List<DarwinNotificationCategory> darwinNotificationCategories =
-      <DarwinNotificationCategory>[
-    DarwinNotificationCategory(
-      darwinNotificationCategoryText,
-      actions: <DarwinNotificationAction>[
-        DarwinNotificationAction.text(
-          'text_1',
-          'Action 1',
-          buttonTitle: 'Send',
-          placeholder: 'Placeholder',
-        ),
-      ],
-    ),
-    DarwinNotificationCategory(
-      darwinNotificationCategoryPlain,
-      actions: <DarwinNotificationAction>[
-        DarwinNotificationAction.plain('id_1', 'Action 1'),
-        DarwinNotificationAction.plain(
-          'id_2',
-          'Action 2 (destructive)',
-          options: <DarwinNotificationActionOption>{
-            DarwinNotificationActionOption.destructive,
-          },
-        ),
-        DarwinNotificationAction.plain(
-          navigationActionId,
-          'Action 3 (foreground)',
-          options: <DarwinNotificationActionOption>{
-            DarwinNotificationActionOption.foreground,
-          },
-        ),
-        DarwinNotificationAction.plain(
-          'id_4',
-          'Action 4 (auth required)',
-          options: <DarwinNotificationActionOption>{
-            DarwinNotificationActionOption.authenticationRequired,
-          },
-        ),
-      ],
-      options: <DarwinNotificationCategoryOption>{
-        DarwinNotificationCategoryOption.hiddenPreviewShowTitle,
-      },
-    )
-  ];
-
-  /// Note: permissions aren't requested here just to demonstrate that can be
-  /// done later
-
   runApp(
     MaterialApp(
       initialRoute: initialRoute,
@@ -155,15 +106,6 @@ Future<void> main() async {
       },
     ),
   );
-}
-
-Future<void> _configureLocalTimeZone() async {
-  if (kIsWeb || Platform.isLinux) {
-    return;
-  }
-  tz.initializeTimeZones();
-  final String timeZoneName = await FlutterTimezone.getLocalTimezone();
-  tz.setLocalLocation(tz.getLocation(timeZoneName));
 }
 
 class PaddedElevatedButton extends StatelessWidget {
@@ -356,7 +298,6 @@ class _HomePageState extends State<HomePage> {
                           'Schedule notification to appear in 5 seconds '
                           'based on local time zone',
                       onPressed: () async {
-                        await zonedScheduleNotification();
                         FlutterBackgroundService().on('notification');
                       },
                     ),
@@ -367,22 +308,6 @@ class _HomePageState extends State<HomePage> {
           ),
         ),
       );
-}
-
-Future<void> zonedScheduleNotification() async {
-  await flutterLocalNotificationsPlugin.zonedSchedule(
-      0,
-      'scheduled title',
-      'scheduled body',
-      tz.TZDateTime.now(tz.local).add(const Duration(seconds: 5)),
-      const NotificationDetails(
-          android: AndroidNotificationDetails(
-              'your channel id', 'your channel name',
-              channelDescription: 'your channel description')),
-      // androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-      uiLocalNotificationDateInterpretation:
-          UILocalNotificationDateInterpretation.absoluteTime,
-      androidAllowWhileIdle: true);
 }
 
 Future<void> initializeService() async {
@@ -408,27 +333,47 @@ Future<void> initializeService() async {
       iosConfiguration: IosConfiguration(),
       androidConfiguration: AndroidConfiguration(
         onStart: onStart,
-        isForegroundMode: true,
-        notificationChannelId: '',
+        isForegroundMode: false,
+        notificationChannelId: 'notification_local',
         initialNotificationTitle: '',
         initialNotificationContent: '',
-        foregroundServiceNotificationId: 888,
+        foregroundServiceNotificationId: 565,
       ));
 }
 
 @pragma('vm:entry-point')
 Future<void> onStart(ServiceInstance service) async {
   DartPluginRegistrant.ensureInitialized();
+  // final channelWebsocket = WebSocketChannel.connect(
+  //   Uri.parse('ws://192.168.10.28:8080'),
+  // );
 
+  final eventSource = html.EventSource('http://192.168.10.28:3030/events');
   final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
       FlutterLocalNotificationsPlugin();
+  if (service is AndroidServiceInstance) {
+    // channelWebsocket.stream.listen((message) async {
+    //   await flutterLocalNotificationsPlugin.show(
+    //     10,
+    //     'Thong bao',
+    //     '$message',
+    //     const NotificationDetails(
+    //       android: AndroidNotificationDetails(
+    //         'notificationChannelId',
+    //         'MY FOREGROUND SERVICE',
+    //         icon: 'ic_bg_service_small',
+    //       ),
+    //     ),
+    //   );
+    // });
 
-  Timer.periodic(const Duration(seconds: 5), (Timer timer) async {
-    if (service is AndroidServiceInstance) {
+    // =====eventSource
+
+    eventSource.onMessage.listen((event) async {
       await flutterLocalNotificationsPlugin.show(
-        0,
-        'COOL SERVICE',
-        'Awesome ${DateTime.now()}',
+        10,
+        'Thong bao event',
+        '${event.data}',
         const NotificationDetails(
           android: AndroidNotificationDetails(
             'notificationChannelId',
@@ -437,8 +382,8 @@ Future<void> onStart(ServiceInstance service) async {
           ),
         ),
       );
-    }
-  });
+    });
+  }
 }
 
 Future<LinuxServerCapabilities> getLinuxCapabilities() =>
