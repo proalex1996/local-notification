@@ -352,6 +352,8 @@ Future<void> onStart(ServiceInstance service) async {
   final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
       FlutterLocalNotificationsPlugin();
   if (service is AndroidServiceInstance) {
+    //========= web socket
+
     // channelWebsocket.stream.listen((message) async {
     //   await flutterLocalNotificationsPlugin.show(
     //     10,
